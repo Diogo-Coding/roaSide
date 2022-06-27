@@ -1,17 +1,17 @@
 <template>
-  <MainNavbar />
+  <!-- <MainNavbar /> -->
   <router-view />
-  <MainFooter />
+  <!-- <MainFooter /> -->
 </template>
 
 <script>
-import MainNavbar from './components/layout/MainNavbar.vue'
-import MainFooter from './components/layout/MainFooter.vue'
+// import MainNavbar from './components/layout/MainNavbar.vue'
+// import MainFooter from './components/layout/MainFooter.vue'
 export default {
-  name: 'App',
-  components: {
-    MainFooter,
-    MainNavbar
-  }
+  name: 'App'
+  // components: {
+  //  MainFooter,
+  //  MainNavbar
+  // }
 }
 </script>
