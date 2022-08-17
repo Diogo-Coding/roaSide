@@ -1,9 +1,29 @@
 <template>
   <section class="main-section">
+    <!--Extract to component-->
+    <nav class="level mb-2">
+      <o-field label="Hotel">
+        <o-select
+          v-model="selectedHotel"
+          placeholder="Seleccionar hotel"
+          @update:model-value="changeHotel"
+        >
+          <option
+            v-for="(hotel, index) in hotels"
+            :key="index"
+            :value="hotel.cif"
+          >
+            {{ hotel.name }}
+          </option>
+        </o-select>
+      </o-field>
+    </nav>
     <FullCalendar
       id="calendar"
+      ref="calendar"
       :options="calendarOptions"
     />
+    <!--Extract to component-->
     <o-loading
       :full-page="true"
       :active="isLoading"
@@ -16,6 +36,42 @@
         spin
       />
     </o-loading>
+    <!--Extract to component-->
+    <o-modal
+      class="has-text-centered"
+      v-model:active="isModalActive"
+    >
+      <o-datepicker
+        inline
+        v-model="initialDate"
+        :first-day-of-week="1"
+        size="medium"
+        :max-date="new Date(new Date().setFullYear(new Date().getFullYear() + 2))"
+        @update:model-value="changeDate"
+      />
+    </o-modal>
+    <!--Extract to component-->
+    <o-modal
+      v-model:active="isModalActiveEvent"
+    >
+      <div class="box">
+        <div class="content">
+          <h1>{{ eventModalData.eventData.No_ }}  - {{ eventModalData.eventData['Room No_'] }}</h1>
+          <ul>
+            <li><strong>Num Reserva: </strong>{{ eventModalData.eventData.No_ }}</li>
+            <li><strong>Habitación: </strong>{{ eventModalData.eventData['Room No_'] }}</li>
+            <li><strong>Nombre Cliente: </strong>{{ eventModalData.eventData.Name }}</li>
+            <li><strong>Llegada: </strong>{{ new Date(eventModalData.eventData['Arrival Date']).toLocaleDateString() }}</li>
+            <li><strong>Salida: </strong>{{ new Date(eventModalData.eventData['Departure Date']).toLocaleDateString() }}</li>
+            <li><strong>Régimen: </strong>{{ eventModalData.eventData['Board Basis'] }}</li>
+            <li><strong>Pax (adultos + niños): </strong>{{ eventModalData.eventData['Total Pax'] - eventModalData.eventData.Children }} / {{ eventModalData.eventData.Children }} </li>
+            <li><strong>Status: </strong>{{ eventModalData.eventData.Status }}</li>
+            <li><strong>Tipo de habitación (Reservada/Asignada): </strong>{{ eventModalData.eventData['Booked Room Type'] }} / {{ eventModalData.eventData['Assigned Room Type'] }}</li>
+            <li><strong>Voucher: </strong>{{ eventModalData.eventData.Voucher }}</li>
+          </ul>
+        </div>
+      </div>
+    </o-modal>
   </section>
 </template>
 
@@ -27,6 +83,7 @@ import esLocale from '@fullcalendar/core/locales/es'
 import interactionPlugin from '@fullcalendar/interaction'
 import { ref, reactive, onMounted } from 'vue'
 import axios from 'axios'
+import CONFIG from '../config/global.js'
 
 export default {
   name: 'HomeView',
@@ -37,9 +94,33 @@ export default {
     const calendarResources = reactive([])
     const calendarEvents = reactive([])
     const isLoading = ref(true)
+    const hotels = ref(CONFIG.hotels)
+    const selectedHotel = ref(hotels.value[0].cif)
     const dateRanges = {
-      minDate: new Date(),
-      maxDate: new Date()
+      minDate: null,
+      maxDate: null
+    }
+    const initialDate = reactive(new Date())
+    const isModalActive = ref(false)
+    const isModalActiveEvent = ref(false)
+    const eventModalData = reactive({ eventData: null })
+    const calendar = ref(null)
+
+    function changeHotel () {
+      isLoading.value = true
+      // Vaciar todas las variables
+      calendarResources.splice(0)
+      calendarEvents.splice(0)
+      eventModalData.eventData = null
+      // Llamar a carga de reservas, carga de tipos de hab, etc
+      loadCalendarResources()
+      loadCalendarEvents(dateRanges.minDate.toISOString().split('T')[0], dateRanges.maxDate.toISOString().split('T')[0])
+      getOcupationAverages(dateRanges.minDate.toISOString().split('T')[0], dateRanges.maxDate.toISOString().split('T')[0])
+    }
+
+    function changeDate (date) {
+      calendar.value.getApi().gotoDate(date)
+      isModalActive.value = false
     }
 
     function handleDates (dates) {
@@ -50,18 +131,24 @@ export default {
 
       isLoading.value = true
 
-      dateRanges.minDate = (dateRanges.minDate > dates.start) ? dates.start : dateRanges.minDate
-      dateRanges.maxDate = (dateRanges.maxDate < dates.end) ? dates.end : dateRanges.maxDate
+      dateRanges.minDate = dates.start
+      dateRanges.maxDate = dates.end
 
       loadCalendarEvents(dates.start.toISOString().split('T')[0], dates.end.toISOString().split('T')[0])
+      getOcupationAverages(dates.start.toISOString().split('T')[0], dates.end.toISOString().split('T')[0])
+    }
+
+    function handleEventClick (event) {
+      eventModalData.eventData = event.event.extendedProps
+      isModalActiveEvent.value = true
     }
 
     function loadCalendarResources () {
-      axios.get('http://192.168.50.20:8083/getRoomDetails/A38033494').then(res => {
+      axios.get(`http://192.168.50.20:8083/getRoomDetails/${selectedHotel.value}`).then(res => {
         res.data.forEach(room => {
           calendarResources.push({
             id: room.No_,
-            title: room.No_
+            title: `${room.No_} ${room.Type}`
           })
         })
       })
@@ -69,28 +156,43 @@ export default {
 
     function loadCalendarEvents (startDate, endDate) {
       // Consulta de reservas
-      axios.get(`http://192.168.50.20:8083/getBookings/A38033494/${startDate}/${endDate}`).then(res => {
+      axios.get(`http://192.168.50.20:8083/getBookings/${selectedHotel.value}/${startDate}/${endDate}`).then(res => {
         const aux = []
+        const roomChanges = []
         res.data.forEach(booking => {
+          if (booking['Change ID']) {
+            roomChanges.push(booking)
+            return
+          }
           if (booking['Room No_'] === '') return
+          // Si es no show no la pintamos
+          if (booking.Status === 4 || booking.Status === 5) return
+          const backgroundColor = '#009929'
+
           // check if the event is already in the array
           const eventExists = calendarEvents.some(event => event.id === booking.No_)
 
           if (!eventExists) {
+            const arrivalHour = (booking['Arrival Time'].split('T')[1].split('.')[0] === '00:00:00') ? 14 : parseInt(booking['Arrival Time'].split('T')[1].split('.')[0].split(':')[0])
+            const departureHour = (booking['Departure Time'].split('T')[1].split('.')[0] === '00:00:00') ? 12 : parseInt(booking['Departure Time'].split('T')[1].split('.')[0].split(':')[0])
+            const arrrivalDate = (new Date(booking['Arrival Date']) < new Date(booking['Check-in Date'])) ? new Date(booking['Check-in Date']) : new Date(booking['Arrival Date'])
             aux.push({
               id: booking.No_,
               title: booking.No_,
-              start: new Date(new Date(booking['Arrival Date']).setHours(14)),
-              end: new Date(new Date(booking['Departure Date']).setHours(12)),
-              resourceId: booking['Room No_']
+              start: new Date(arrrivalDate.setHours(arrivalHour)),
+              end: new Date(new Date(booking['Departure Date']).setHours(departureHour)),
+              resourceId: booking['Room No_'],
+              backgroundColor: backgroundColor,
+              extendedProps: booking
             })
           }
         })
         calendarEvents.push(...aux)
+        if (roomChanges.length > 0) getRoomChanges(roomChanges)
         isLoading.value = false
       })
       // Consultar tambien bloqueos de habitaciones
-      axios.get(`http://192.168.50.20:8083/getLockRooms/A38033494/${startDate}/${endDate}`).then(res => {
+      axios.get(`http://192.168.50.20:8083/getLockRooms/${selectedHotel.value}/${startDate}/${endDate}`).then(res => {
         const aux = []
         res.data.forEach(lock => {
           // check if the event is already in the array
@@ -103,11 +205,53 @@ export default {
               end: lock['Ending Date'],
               resourceId: lock['Room No_'],
               // Mirar colores de fondo
-              backgroundColor: '#ff0000'
+              backgroundColor: '#ff6961',
+              color: '#ffffff',
+              display: 'background',
+              extendedProps: lock
             })
           }
         })
         calendarEvents.push(...aux)
+      })
+    }
+
+    function getRoomChanges (rooms) {
+      const promises = []
+      rooms.forEach(room => {
+        promises.push(axios.get(`http://192.168.50.20:8083/getRoomChange/${selectedHotel.value}/${room.No_}`))
+      })
+
+      Promise.all(promises).then((responses) => {
+        const aux = []
+        responses.forEach(changes => {
+          const fullBooking = rooms.find(r => r.No_ === changes.data[0]['Booking No_'])
+          changes.data.forEach(booking => {
+            const eventExists = calendarEvents.some(event => event.id === booking['Booking No_'] + 'CHANGED' + booking['Room No_'])
+
+            if (!eventExists) {
+              aux.push({
+                id: booking['Booking No_'] + 'CHANGED' + booking['Room No_'],
+                title: booking['Booking No_'] + 'CHANGED' + booking['Room No_'],
+                start: new Date(new Date(booking['Arrival Date']).setHours(14)),
+                end: new Date(new Date(booking['Departure Date']).setHours(12)),
+                backgroundColor: '#1465bb',
+                resourceId: booking['Room No_'],
+                extendedProps: fullBooking
+              })
+            }
+          })
+        })
+        calendarEvents.push(...aux)
+      })
+    }
+
+    function getOcupationAverages (startDate, endDate) {
+      axios.get(`http://192.168.50.20:8083/getOccupation/${selectedHotel.value}/${startDate}/${endDate}`).then(response => {
+        response.data.forEach(occupattion => {
+          const element = document.querySelector(`[data-date="${occupattion.Date.split('.')[0]}"] > div > a`)
+          if (element) element.innerHTML = `<span class="is-size-7 has-text-grey-light has-text-weight-normal is-pulled-right ml-1 mt-1" alt="${occupattion.POccupation}%">${occupattion.POccupation}%</span>`
+        })
       })
     }
 
@@ -117,36 +261,54 @@ export default {
       headerToolbar: {
         left: 'resourceTimelineHalfMonth,resourceTimelineFullMonth,resourceTimelineThreeMonth,resourceTimelineOneYear zoom',
         center: 'title',
-        right: 'today prev,next'
+        right: 'initialDate today prev,next'
       },
       views: {
         resourceTimelineHalfMonth: {
           buttonText: '15 días',
           type: 'resourceTimeline',
           duration: { days: 15 },
-          slotDuration: { days: 1 },
-          dayHeaders: true
+          slotDuration: { hours: 12 },
+          dayHeaders: true,
+          slotLabelFormat: [
+            { day: '2-digit', month: '2-digit' }, // top level of text
+            { hour: '2-digit' } //
+          ]
         },
         resourceTimelineFullMonth: {
           buttonText: 'Mensual',
           type: 'resourceTimeline',
           duration: { days: 30 },
-          slotDuration: { days: 1 },
-          dayHeaders: true
+          slotDuration: { hours: 12 },
+          dayHeaders: true,
+          slotLabelFormat: [
+            { day: '2-digit', month: '2-digit' }, // top level of text
+            { hour: '2-digit' } //
+          ]
         },
         resourceTimelineThreeMonth: {
           buttonText: '3 meses',
           type: 'resourceTimeline',
           duration: { days: 90 },
-          slotDuration: { days: 1 },
-          dayHeaders: true
+          slotDuration: { hours: 12 },
+          dayHeaders: true,
+          slotLabelFormat: [
+            { month: 'long', year: 'numeric' },
+            { day: '2-digit', month: '2-digit' }, // top level of text
+            { hour: '2-digit' } //
+          ]
         },
         resourceTimelineOneYear: {
           buttonText: '1 Año',
           type: 'resourceTimeline',
           duration: { days: 365 },
-          slotDuration: { days: 1 },
-          dayHeaders: true
+          slotDuration: { hours: 12 },
+          dayHeaders: true,
+          slotLabelFormat: [
+            { month: 'long', year: 'numeric' },
+            { day: '2-digit', month: '2-digit' }, // top level of text
+            { hour: '2-digit' } //
+          ]
         }
       },
       customButtons: {
@@ -154,6 +316,12 @@ export default {
           text: 'Añadir/Quitar Zoom',
           click: function () {
             document.getElementsByTagName('table')[0].classList.toggle('zoom')
+          }
+        },
+        initialDate: {
+          text: 'Cambiar fecha',
+          click: function () {
+            isModalActive.value = true
           }
         }
       },
@@ -168,7 +336,10 @@ export default {
       eventDurationEditable: false,
       eventStartEditable: false,
       displayEventTime: false,
-      progressiveEventRendering: true
+      progressiveEventRendering: true,
+      initialDate: initialDate,
+      selectable: true,
+      eventClick: handleEventClick
     }
 
     onMounted(() => {
@@ -176,7 +347,7 @@ export default {
     })
 
     return {
-      calendarOptions, calendarResources, calendarEvents, handleDates, loadCalendarResources, loadCalendarEvents, isLoading
+      calendarOptions, calendarResources, calendarEvents, handleDates, loadCalendarEvents, isLoading, initialDate, isModalActive, changeDate, calendar, isModalActiveEvent, handleEventClick, eventModalData, hotels, selectedHotel, changeHotel
     }
   }
 
@@ -185,7 +356,7 @@ export default {
 
 <style>
 .fc.fc-media-screen {
- height: calc(100vh - 2rem);
+ height: calc(100vh - 2.5rem - 72px);
 }
 .fc-day-sat, .fc-day-sun {
   background-color: rgba(200, 200, 200, 0.2);
@@ -199,5 +370,4 @@ export default {
 .zoom {
   zoom: 50%;
 }
-
 </style>
