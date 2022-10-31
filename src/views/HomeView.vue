@@ -1,22 +1,47 @@
 <template>
   <section class="main-section">
+    <!--WIP-->
+    <o-sidebar
+      :fullheight="true"
+      :fullwidth="true"
+      :overlay="true"
+      :left="true"
+      :open="open"
+    >
+      <o-button
+        icon-left="times"
+        label="Close"
+        @click="open = false"
+      />
+      <h3>Example</h3>
+    </o-sidebar>
     <!--Extract to component-->
     <nav class="level mb-2">
-      <o-field label="Hotel">
-        <o-select
-          v-model="selectedHotel"
-          placeholder="Seleccionar hotel"
-          @update:model-value="changeHotel"
+      <div class="level-left">
+        <o-button
+          @click="open = true"
+          icon-left="bars"
         >
-          <option
-            v-for="(hotel, index) in hotels"
-            :key="index"
-            :value="hotel.cif"
+          Abrir menú
+        </o-button>
+      </div>
+      <div class="level-right">
+        <o-field label="Hotel">
+          <o-select
+            v-model="selectedHotel"
+            placeholder="Seleccionar hotel"
+            @update:model-value="changeHotel"
           >
-            {{ hotel.name }}
-          </option>
-        </o-select>
-      </o-field>
+            <option
+              v-for="(hotel, index) in hotels"
+              :key="index"
+              :value="hotel.cif"
+            >
+              {{ hotel.name }}
+            </option>
+          </o-select>
+        </o-field>
+      </div>
     </nav>
     <FullCalendar
       id="calendar"
@@ -76,13 +101,17 @@
 </template>
 
 <script>
+// Vue
+import { ref, reactive, onMounted } from 'vue'
+// FullCalendar
 import '@fullcalendar/core/vdom'
 import FullCalendar from '@fullcalendar/vue3'
 import resourceTimelinePlugin from '@fullcalendar/resource-timeline'
 import esLocale from '@fullcalendar/core/locales/es'
 import interactionPlugin from '@fullcalendar/interaction'
-import { ref, reactive, onMounted } from 'vue'
+// Libraries
 import axios from 'axios'
+// Config
 import CONFIG from '../config/global.js'
 
 export default {
@@ -94,6 +123,8 @@ export default {
     const calendarResources = reactive([])
     const calendarEvents = reactive([])
     const isLoading = ref(true)
+    const roomTypes = ref(null)
+    const open = ref(false)
     const hotels = ref(CONFIG.hotels)
     const selectedHotel = ref(hotels.value[0].cif)
     const dateRanges = {
@@ -144,11 +175,12 @@ export default {
     }
 
     function loadCalendarResources () {
-      axios.get(`http://192.168.50.20:8083/getRoomDetails/${selectedHotel.value}`).then(res => {
+      axios.get(`http://192.168.50.20:8084/rooms/getRoomDetails/${selectedHotel.value}`).then(res => {
         res.data.forEach(room => {
           calendarResources.push({
             id: room.No_,
-            title: `${room.No_} ${room.Type}`
+            title: `${room.No_} ${room.Type}`,
+            roomType: room.Type
           })
         })
       })
@@ -156,7 +188,7 @@ export default {
 
     function loadCalendarEvents (startDate, endDate) {
       // Consulta de reservas
-      axios.get(`http://192.168.50.20:8083/getBookings/${selectedHotel.value}/${startDate}/${endDate}`).then(res => {
+      axios.get(`http://192.168.50.20:8084/bookings/getBookings/${selectedHotel.value}/${startDate}/${endDate}`).then(res => {
         const aux = []
         const roomChanges = []
         res.data.forEach(booking => {
@@ -182,7 +214,7 @@ export default {
               start: new Date(arrrivalDate.setHours(arrivalHour)),
               end: new Date(new Date(booking['Departure Date']).setHours(departureHour)),
               resourceId: booking['Room No_'],
-              backgroundColor: backgroundColor,
+              backgroundColor,
               extendedProps: booking
             })
           }
@@ -192,7 +224,7 @@ export default {
         isLoading.value = false
       })
       // Consultar tambien bloqueos de habitaciones
-      axios.get(`http://192.168.50.20:8083/getLockRooms/${selectedHotel.value}/${startDate}/${endDate}`).then(res => {
+      axios.get(`http://192.168.50.20:8084/locks/getLockRooms/${selectedHotel.value}/${startDate}/${endDate}`).then(res => {
         const aux = []
         res.data.forEach(lock => {
           // check if the event is already in the array
@@ -219,7 +251,7 @@ export default {
     function getRoomChanges (rooms) {
       const promises = []
       rooms.forEach(room => {
-        promises.push(axios.get(`http://192.168.50.20:8083/getRoomChange/${selectedHotel.value}/${room.No_}`))
+        promises.push(axios.get(`http://192.168.50.20:8084/bookings/getRoomChange/${selectedHotel.value}/${room.No_}`))
       })
 
       Promise.all(promises).then((responses) => {
@@ -247,7 +279,7 @@ export default {
     }
 
     function getOcupationAverages (startDate, endDate) {
-      axios.get(`http://192.168.50.20:8083/getOccupation/${selectedHotel.value}/${startDate}/${endDate}`).then(response => {
+      axios.get(`http://192.168.50.20:8084/bookings/getOccupation/${selectedHotel.value}/${startDate}/${endDate}`).then(response => {
         response.data.forEach(occupattion => {
           const element = document.querySelector(`[data-date="${occupattion.Date.split('.')[0]}"] > div > a`)
           if (element) element.innerHTML = `<span class="is-size-7 has-text-grey-light has-text-weight-normal is-pulled-right ml-1 mt-1" alt="${occupattion.POccupation}%">${occupattion.POccupation}%</span>`
@@ -337,7 +369,7 @@ export default {
       eventStartEditable: false,
       displayEventTime: false,
       progressiveEventRendering: true,
-      initialDate: initialDate,
+      initialDate,
       selectable: true,
       eventClick: handleEventClick
     }
@@ -347,7 +379,7 @@ export default {
     })
 
     return {
-      calendarOptions, calendarResources, calendarEvents, handleDates, loadCalendarEvents, isLoading, initialDate, isModalActive, changeDate, calendar, isModalActiveEvent, handleEventClick, eventModalData, hotels, selectedHotel, changeHotel
+      calendarOptions, calendarResources, calendarEvents, handleDates, loadCalendarEvents, isLoading, initialDate, isModalActive, changeDate, calendar, isModalActiveEvent, eventModalData, hotels, selectedHotel, changeHotel, roomTypes, open
     }
   }
 
