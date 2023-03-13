@@ -1,21 +1,5 @@
 <template>
   <section class="main-section">
-    <!--WIP-->
-    <o-sidebar
-      :fullheight="true"
-      :fullwidth="true"
-      :overlay="true"
-      :left="true"
-      :open="open"
-    >
-      <o-button
-        icon-left="times"
-        label="Close"
-        @click="open = false"
-      />
-      <h3>Example</h3>
-    </o-sidebar>
-    <!--Extract to component-->
     <nav class="level mb-2">
       <div class="level-left">
         <o-button
@@ -26,7 +10,10 @@
         </o-button>
       </div>
       <div class="level-right">
-        <o-field label="Hotel">
+        <o-field
+          label="Hotel"
+          :horizontal="true"
+        >
           <o-select
             v-model="selectedHotel"
             placeholder="Seleccionar hotel"
@@ -48,56 +35,53 @@
       ref="calendar"
       :options="calendarOptions"
     />
-    <!--Extract to component-->
-    <o-loading
-      :full-page="true"
-      :active="isLoading"
-      :can-cancel="false"
-    >
-      <o-icon
-        pack="fas"
-        icon="circle-notch"
-        size="large"
-        spin
-      />
-    </o-loading>
-    <!--Extract to component-->
-    <o-modal
-      class="has-text-centered"
-      v-model:active="isModalActive"
-    >
-      <o-datepicker
-        inline
-        v-model="initialDate"
-        :first-day-of-week="1"
-        size="medium"
-        :max-date="new Date(new Date().setFullYear(new Date().getFullYear() + 2))"
-        @update:model-value="changeDate"
-      />
-    </o-modal>
-    <!--Extract to component-->
-    <o-modal
-      v-model:active="isModalActiveEvent"
-    >
-      <div class="box">
-        <div class="content">
-          <h1>{{ eventModalData.eventData.No_ }}  - {{ eventModalData.eventData['Room No_'] }}</h1>
-          <ul>
-            <li><strong>Num Reserva: </strong>{{ eventModalData.eventData.No_ }}</li>
-            <li><strong>Habitación: </strong>{{ eventModalData.eventData['Room No_'] }}</li>
-            <li><strong>Nombre Cliente: </strong>{{ eventModalData.eventData.Name }}</li>
-            <li><strong>Llegada: </strong>{{ new Date(eventModalData.eventData['Arrival Date']).toLocaleDateString() }}</li>
-            <li><strong>Salida: </strong>{{ new Date(eventModalData.eventData['Departure Date']).toLocaleDateString() }}</li>
-            <li><strong>Régimen: </strong>{{ eventModalData.eventData['Board Basis'] }}</li>
-            <li><strong>Pax (adultos + niños): </strong>{{ eventModalData.eventData['Total Pax'] - eventModalData.eventData.Children }} / {{ eventModalData.eventData.Children }} </li>
-            <li><strong>Status: </strong>{{ eventModalData.eventData.Status }}</li>
-            <li><strong>Tipo de habitación (Reservada/Asignada): </strong>{{ eventModalData.eventData['Booked Room Type'] }} / {{ eventModalData.eventData['Assigned Room Type'] }}</li>
-            <li><strong>Voucher: </strong>{{ eventModalData.eventData.Voucher }}</li>
-          </ul>
-        </div>
-      </div>
-    </o-modal>
   </section>
+  <o-sidebar
+    :fullheight="true"
+    :fullwidth="true"
+    :overlay="true"
+    :left="true"
+    :open="open"
+  >
+    <o-button
+      icon-left="times"
+      label="Close"
+      @click="open = false"
+    />
+    <h3>Example</h3>
+  </o-sidebar>
+  <o-loading
+    :full-page="true"
+    :active="isLoading"
+    :can-cancel="false"
+  >
+    <o-icon
+      pack="fas"
+      icon="circle-notch"
+      size="large"
+      spin
+    />
+  </o-loading>
+  <o-modal
+    class="has-text-centered"
+    v-model:active="isModalActive"
+  >
+    <o-datepicker
+      inline
+      v-model="initialDate"
+      :first-day-of-week="1"
+      size="medium"
+      :max-date="new Date(new Date().setFullYear(new Date().getFullYear() + 2))"
+      @update:model-value="changeDate"
+    />
+  </o-modal>
+  <o-modal
+    v-model:active="isModalActiveEvent"
+  >
+    <BookingInfo
+      :event-modal-data="eventModalData"
+    />
+  </o-modal>
 </template>
 
 <script>
@@ -113,11 +97,14 @@ import interactionPlugin from '@fullcalendar/interaction'
 import axios from 'axios'
 // Config
 import CONFIG from '../config/global.js'
+// Components
+import BookingInfo from '../components/home/BookingInfo.vue'
 
 export default {
   name: 'HomeView',
   components: {
-    FullCalendar
+    FullCalendar,
+    BookingInfo
   },
   setup () {
     const calendarResources = reactive([])

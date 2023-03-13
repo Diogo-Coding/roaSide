@@ -3,7 +3,7 @@ node_modules
 /dist
 
 # Local config
-src/config/global.js
+/src/config/global.js
 
 # local env files
 .env.local
